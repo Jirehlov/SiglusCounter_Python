@@ -23,7 +23,9 @@ def main():
     x = int.from_bytes(d[8:12], "little"); m = int.from_bytes(d[12:16], "little")
     for i in range(x): d[16 + i] ^= KEY[i & 255]
     b = lzss(d[24:], int.from_bytes(d[20:24], "little"))
-    rf = open(a.raw, "w", encoding="utf-8-sig", newline="") if a.raw else None
+    if a.raw:
+        with open(a.raw, "wb") as rf:
+            rf.write(b)
     q = 0; tr = tc = 0
     with op.open("w", encoding="utf-8-sig", newline="") as f:
         for _ in range(m):
@@ -34,13 +36,8 @@ def main():
             r = sum(flags) if cnt else 0; tr += r; tc += cnt
             pct = (r * 1000) // cnt if cnt else 0
             f.write(f"{r:6d}/{cnt:6d}   {pct//10:3d}.{pct%10:d}%   {name}\r\n")
-            if rf:
-                rf.write(name + "\n")
-                rf.write("".join("1" if v else "0" for v in flags) + "\n")
         f.write("----------------------------------------\r\n")
         pct = (tr * 10000) // tc if tc else 0
         f.write(f"{tr:6d}/{tc:6d}   {pct//100:3d}.{pct%100:02d}%  (ALL)\r\n")
-    if rf: rf.close()
-
 if __name__ == "__main__":
     main()
