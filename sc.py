@@ -14,9 +14,25 @@ def lzss(s, n):
         c >>= 1
     return o[:n]
 
+def lzss_c(d):
+    o = bytearray(); p = 0; n = len(d)
+    while p < n:
+        ctrl = 0; cp = len(o); o.append(0)
+        for bit in range(8):
+            if p >= n: break
+            bl = 0; bo = 0; mo = min(p, 4095); ml = min(n - p, 17)
+            for off in range(1, mo + 1):
+                l = 0
+                while l < ml and d[p + l] == d[p - off + l]: l += 1
+                if l > bl: bl = l; bo = off
+            if bl >= 2: t = (bo << 4) | (bl - 2); o.append(t & 255); o.append(t >> 8); p += bl
+            else: ctrl |= (1 << bit); o.append(d[p]); p += 1
+        o[cp] = ctrl
+    return bytes(o)
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("input"); ap.add_argument("-o", "--output"); ap.add_argument("--raw")
+    ap.add_argument("input"); ap.add_argument("-o", "--output"); ap.add_argument("--raw"); ap.add_argument("-a", "--readall", action="store_true")
     a = ap.parse_args()
     ip = Path(a.input); op = Path(a.output) if a.output else ip.with_suffix(".txt")
     d = bytearray(ip.read_bytes())
@@ -26,6 +42,20 @@ def main():
     if a.raw:
         with open(a.raw, "wb") as rf:
             rf.write(b)
+    if a.readall:
+        b = bytearray(b); q = 0
+        for _ in range(m):
+            L = int.from_bytes(b[q:q+4], "little"); q += 4 + 2 * L
+            cnt = int.from_bytes(b[q:q+4], "little"); q += 4
+            for i in range(cnt):
+                if b[q + i] == 0: b[q + i] = 1
+            q += cnt
+        ub = len(b); cb = lzss_c(b)
+        nd = d[0:16] + d[16:20] + ub.to_bytes(4, "little") + cb
+        nx = len(nd) - 16; nd[8:12] = nx.to_bytes(4, "little")
+        for i in range(nx): nd[16 + i] ^= KEY[i & 255]
+        Path(str(ip) + ".bkp").write_bytes(ip.read_bytes())
+        ip.write_bytes(nd); return
     q = 0; tr = tc = 0
     with op.open("w", encoding="utf-8-sig", newline="") as f:
         for _ in range(m):
@@ -34,8 +64,7 @@ def main():
             cnt = int.from_bytes(b[q:q+4], "little"); q += 4
             flags = b[q:q+cnt]; q += cnt
             r = sum(flags) if cnt else 0; tr += r; tc += cnt
-            pct = (r * 1000) // cnt if cnt else 0
-            f.write(f"{r:6d}/{cnt:6d}   {pct//10:3d}.{pct%10:d}%   {name}\r\n")
+            if cnt: pct = (r * 1000) // cnt; f.write(f"{r:6d}/{cnt:6d}   {pct//10:3d}.{pct%10:d}%   {name}\r\n")
         f.write("----------------------------------------\r\n")
         pct = (tr * 10000) // tc if tc else 0
         f.write(f"{tr:6d}/{tc:6d}   {pct//100:3d}.{pct%100:02d}%  (ALL)\r\n")
